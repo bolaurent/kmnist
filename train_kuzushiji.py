@@ -1,3 +1,6 @@
+import os
+import datetime
+import subprocess
 import sys
 import numpy as np
 import tensorflow as tf
@@ -35,8 +38,9 @@ elif dataset == 'k49':
         'zu', 'se', 'ze', 'so', 'zo', 'ta', 'da', 'chi', 'di', 'tsu',
         'tsu (sokuon)', 'du', 'te', 'de', 'to', 'do', 'na', 'ni', 'nu', 'ne',
         'no', 'ha', 'ba', 'pa', 'hi', 'bi', 'pi', 'fu', 'bu'
-    ]else:
-        raise ValueError("Dataset must be 'kmnist' or 'k49'")
+    ]
+else:
+    raise ValueError("Dataset must be 'kmnist' or 'k49'")
 
 # Normalize and prepare
 x = x.astype("float32") / 255.0
@@ -47,17 +51,23 @@ y_train, y_test = y[:split], y[split:]
 train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(10000).batch(32)
 test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(32)
 
-# Build model
-model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(28, 28, 1)),
-    tf.keras.layers.Conv2D(32, 3, activation='relu'),
-    tf.keras.layers.MaxPooling2D(),
-    tf.keras.layers.Conv2D(64, 3, activation='relu'),
-    tf.keras.layers.MaxPooling2D(),
-    tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(128, activation='relu'),
-    tf.keras.layers.Dense(num_classes)
-])
+model_path = f"{dataset}_model.h5"
+
+if os.path.exists(model_path):
+    print(f"🔁 Resuming from saved model: {model_path}")
+    model = tf.keras.models.load_model(model_path)
+else:
+    print("🛠️  Building new model...")
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(28, 28, 1)),
+        tf.keras.layers.Conv2D(32, 3, activation='relu'),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Conv2D(64, 3, activation='relu'),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(num_classes)
+    ])
 
 model.compile(
     optimizer='adam',
@@ -65,11 +75,26 @@ model.compile(
     metrics=['accuracy']
 )
 
+# Start TensorBoard in background
+tensorboard_url = "http://localhost:6006"
+print(f"🚀 Launching TensorBoard at {tensorboard_url}...")
+subprocess.Popen(["tensorboard", "--logdir", "logs", "--port", "6006"])
+
 log_dir = f"logs/{dataset}/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-model.fit(train_ds, epochs=5, validation_data=test_ds)
+model.fit(
+    train_ds,
+    epochs=5,
+    validation_data=test_ds,
+    callbacks=[tensorboard_callback]
+)
 loss, acc = model.evaluate(test_ds)
+
+model.save(f"{dataset}_model.h5")
+print(f"✓ Model saved to {dataset}_model.h5")
+
+
 print(f"\nTest accuracy: {acc:.4f}")
 
 # Set up Japanese font (if possible)
